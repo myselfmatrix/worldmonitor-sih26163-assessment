@@ -1,0 +1,49 @@
+name: SIH26163 assessment CI
+
+# Continuous verification of the security-assessment toolkit for the SIH26163
+# submission. This fork intentionally replaces the upstream World Monitor
+# deploy/publish workflows (which require the upstream project's private secrets
+# and infrastructure) with checks that are self-contained and relevant to the
+# assessment. All steps run on plain Node with no external services.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assessment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + tags so the BEFORE/AFTER PoC can read
+          # BASELINE-SIH26163 via `git show`.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: CVSS v3.1 calculator self-check
+        run: node assessment/engine/cvss.mjs
+
+      - name: F1 RSS-proxy security regression suite
+        run: node --test assessment/tests/f1-rss-proxy.security.test.mjs
+
+      - name: Generate evidence + reports (assessment pipeline)
+        run: node assessment/run.mjs
+
+      - name: Upload generated assessment reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sih26163-assessment-reports
+          path: |
+            assessment/reports/
+            assessment/data/assessment.json
+            assessment/data/evidence.json
