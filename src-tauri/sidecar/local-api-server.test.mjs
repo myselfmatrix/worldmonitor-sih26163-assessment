@@ -2809,6 +2809,11 @@ test('default-deny: rejects every authenticated route when LOCAL_API_TOKEN is un
 
 test('rss-proxy pins an IPv6-only hostname to the validated address', async () => {
   const localApi = await setupApiDir({});
+  // SIH26163 / F1: the RSS proxy now enforces a destination-domain allowlist.
+  // This test verifies address pinning, so opt its fixture host in rather than
+  // weaken the production default.
+  const prevAllow = process.env.WM_RSS_ALLOWED_DOMAINS;
+  process.env.WM_RSS_ALLOWED_DOMAINS = 'ipv6-only.example';
   const originalResolve4 = dns.resolve4;
   const originalResolve6 = dns.resolve6;
   const originalHttpsRequest = https.request;
@@ -2870,6 +2875,8 @@ test('rss-proxy pins an IPv6-only hostname to the validated address', async () =
     assert.equal(outboundOptions?.family, 6);
     assert.deepEqual(pinnedLookup, { address: publicIpv6, family: 6 });
   } finally {
+    if (prevAllow === undefined) delete process.env.WM_RSS_ALLOWED_DOMAINS;
+    else process.env.WM_RSS_ALLOWED_DOMAINS = prevAllow;
     dns.resolve4 = originalResolve4;
     dns.resolve6 = originalResolve6;
     https.request = originalHttpsRequest;
@@ -2934,6 +2941,10 @@ test('rss-proxy blocks IPv4-mapped IPv6 literals and DNS answers before transpor
 
 test('rss-proxy forces active and error responses through an inert response policy', async () => {
   const localApi = await setupApiDir({});
+  // SIH26163 / F1: opt the fixture publisher host into the allowlist so this
+  // test still exercises the inert-response policy on a fetched body.
+  const prevAllow = process.env.WM_RSS_ALLOWED_DOMAINS;
+  process.env.WM_RSS_ALLOWED_DOMAINS = 'publisher.example';
   const originalResolve4 = dns.resolve4;
   const originalResolve6 = dns.resolve6;
   const originalHttpsRequest = https.request;
@@ -3008,6 +3019,8 @@ test('rss-proxy forces active and error responses through an inert response poli
       assert.match(response.headers.get('content-security-policy') || '', /(?:^|;\s*)sandbox(?:;|$)/);
     }
   } finally {
+    if (prevAllow === undefined) delete process.env.WM_RSS_ALLOWED_DOMAINS;
+    else process.env.WM_RSS_ALLOWED_DOMAINS = prevAllow;
     dns.resolve4 = originalResolve4;
     dns.resolve6 = originalResolve6;
     https.request = originalHttpsRequest;

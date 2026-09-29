@@ -341,6 +341,71 @@ const RSS_PROXY_SECURITY_HEADERS = Object.freeze({
   'x-content-type-options': 'nosniff',
 });
 
+// ── RSS proxy egress policy (SIH26163 / F1 remediation) ───────────────────
+// The hosted Vercel proxy (api/rss-proxy.js) enforces two controls that the
+// self-hosted sidecar historically lacked: a destination-domain allowlist and
+// a hard response-size cap. Without them the sidecar route — reached through
+// the Docker public ingress, which injects the transport token on every
+// request — would fetch any public URL a caller names and buffer the full
+// body, enabling an authenticated open-web-proxy + memory-amplification gap.
+//
+// The 428-host hosted allowlist file is not copied into the single-file Docker
+// sidecar image, so parity is provided here as a compact built-in default that
+// operators extend via WM_RSS_ALLOWED_DOMAINS (comma-separated hostnames).
+// Matching is www-tolerant, mirroring api/_rss-allowed-domain-match.js.
+
+// 5 MB, matching MAX_FEED_BYTES in api/rss-proxy.js.
+const MAX_RSS_RESPONSE_BYTES = 5 * 1024 * 1024;
+// Bounded redirect follow with per-hop re-validation, mirroring the hosted
+// proxy's MAX_DIRECT_REDIRECTS.
+const MAX_RSS_REDIRECTS = 3;
+const RSS_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+// Common public feed hosts shipped as a safe default so out-of-the-box RSS
+// keeps working. Operators add their own via WM_RSS_ALLOWED_DOMAINS.
+const DEFAULT_RSS_ALLOWED_DOMAINS = Object.freeze([
+  'feeds.bbci.co.uk',
+  'rss.cnn.com',
+  'feeds.reuters.com',
+  'feeds.arstechnica.com',
+  'www.theguardian.com',
+  'feeds.npr.org',
+  'news.google.com',
+  'hnrss.org',
+  'feeds.feedburner.com',
+]);
+
+function parseRssAllowedDomainsEnv(raw) {
+  if (typeof raw !== 'string' || raw.trim() === '') return [];
+  return raw
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.length > 0);
+}
+
+// Env overrides/extends the default set. When WM_RSS_ALLOWED_DOMAINS is set,
+// its entries are ADDED to the defaults (operators broaden, never silently
+// narrow, the safe baseline). Use WM_RSS_ALLOWED_DOMAINS_STRICT=1 to replace.
+function getRssAllowedDomains() {
+  const fromEnv = parseRssAllowedDomainsEnv(process.env.WM_RSS_ALLOWED_DOMAINS);
+  const strict = String(process.env.WM_RSS_ALLOWED_DOMAINS_STRICT ?? '') === '1';
+  if (strict) return new Set(fromEnv);
+  return new Set([...DEFAULT_RSS_ALLOWED_DOMAINS, ...fromEnv]);
+}
+
+// exact / bare (www. stripped) / www-prefixed — any match is sufficient.
+function rssHostMatchForms(hostname) {
+  if (typeof hostname !== 'string' || hostname.length === 0) return [];
+  const host = hostname.toLowerCase();
+  const bare = host.replace(/^www\./, '');
+  const withWww = host.startsWith('www.') ? host : `www.${host}`;
+  return [...new Set([host, bare, withWww])];
+}
+
+function isRssDomainAllowed(hostname, allowed = getRssAllowedDomains()) {
+  return rssHostMatchForms(hostname).some((form) => allowed.has(form));
+}
+
 // ── SSRF protection ──────────────────────────────────────────────────────
 // Block requests to private/reserved IP ranges to prevent the RSS proxy
 // from being used as a localhost pivot or internal network scanner.
@@ -1010,8 +1075,15 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   delete fetchOptions.allowPrivateNetwork;
   const resolvedAddress = fetchOptions.resolvedAddress;
   const requestedFamily = fetchOptions.resolvedFamily;
+  // Optional hard response-size cap. When set, the transport aborts as soon as
+  // the accumulated body exceeds the limit instead of buffering without bound
+  // (SIH26163 / F1). A rejected read carries code ERR_RESPONSE_TOO_LARGE.
+  const maxResponseBytes = typeof fetchOptions.maxResponseBytes === 'number'
+    ? fetchOptions.maxResponseBytes
+    : null;
   delete fetchOptions.resolvedAddress;
   delete fetchOptions.resolvedFamily;
+  delete fetchOptions.maxResponseBytes;
   const resolvedFamily = resolvedAddress ? isIP(resolvedAddress) : 0;
   if (resolvedAddress && resolvedFamily === 0) {
     throw new TypeError('resolvedAddress must be an IPv4 or IPv6 address');
@@ -1036,8 +1108,24 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
       }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
-        res.on('data', (c) => chunks.push(c));
+        let total = 0;
+        let aborted = false;
+        res.on('data', (c) => {
+          if (aborted) return;
+          total += c.length;
+          // Abort mid-stream once the cap is exceeded so an oversized or
+          // endless upstream body cannot be buffered without bound.
+          if (maxResponseBytes != null && total > maxResponseBytes) {
+            aborted = true;
+            const err = new Error('Response exceeds maximum allowed size');
+            err.code = 'ERR_RESPONSE_TOO_LARGE';
+            req.destroy(err);
+            return;
+          }
+          chunks.push(c);
+        });
         res.on('end', () => {
+          if (aborted) return;
           const body = Buffer.concat(chunks);
           const headers = new Headers();
           for (const [key, value] of Object.entries(res.headers)) {
@@ -1668,42 +1756,77 @@ async function dispatch(requestUrl, req, routes, context) {
     return json({ error: 'YouTube video lookup unavailable' }, 503);
   }
 
-  // RSS proxy — fetch public feeds with SSRF protection
+  // RSS proxy — fetch public feeds with SSRF protection, a destination-domain
+  // allowlist, a hard response-size cap, and per-hop redirect re-validation
+  // (SIH26163 / F1: brings the self-hosted sidecar to parity with the hosted
+  // api/rss-proxy.js egress policy).
   if (requestUrl.pathname === '/api/rss-proxy') {
     const feedUrl = requestUrl.searchParams.get('url');
     if (!feedUrl) return rssProxyJson({ error: 'Missing url parameter' }, 400);
 
-    // SSRF protection: block private IPs, reserved ranges, and DNS rebinding
-    const safety = await isSafeUrl(feedUrl);
-    if (!safety.safe) {
-      context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason} (url=${feedUrl})`);
-      return rssProxyJson({ error: safety.reason }, 403);
-    }
-
+    const allowedDomains = getRssAllowedDomains();
+    let currentUrl = feedUrl;
     try {
-      const parsed = new URL(feedUrl);
-      // Pin to an address validated by isSafeUrl() so the actual TCP
-      // connection goes to the same IP and family we checked, closing
-      // the TOCTOU DNS-rebinding window for IPv4 and IPv6-only feeds.
-      const pinned = pickPinnedAddress(safety.resolvedAddresses);
-      if (!pinned) {
-        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${feedUrl})`);
-        return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
+      for (let hop = 0; hop <= MAX_RSS_REDIRECTS; hop += 1) {
+        // 1) SSRF: block private/reserved IPs and DNS rebinding — on every hop.
+        const safety = await isSafeUrl(currentUrl);
+        if (!safety.safe) {
+          context.logger.warn(`[local-api] rss-proxy SSRF blocked: ${safety.reason}`);
+          return rssProxyJson({ error: safety.reason }, 403);
+        }
+
+        // 2) Domain allowlist — on every hop, so a redirect cannot escape the
+        //    policy that applied to the original request.
+        const parsed = new URL(currentUrl);
+        if (!isRssDomainAllowed(parsed.hostname, allowedDomains)) {
+          context.logger.warn(`[local-api] rss-proxy domain not allowlisted: ${parsed.hostname}`);
+          return rssProxyJson({ error: 'Domain not in RSS allowlist' }, 403);
+        }
+
+        // 3) Pin to an address validated by isSafeUrl() so the TCP connection
+        //    goes to the same IP/family we checked (closes the TOCTOU window).
+        const pinned = pickPinnedAddress(safety.resolvedAddresses);
+        if (!pinned) {
+          context.logger.warn(`[local-api] rss-proxy blocked: no validated address for ${parsed.hostname}`);
+          return rssProxyJson({ error: 'Could not resolve hostname' }, 403);
+        }
+
+        const response = await fetchWithTimeout(currentUrl, {
+          headers: {
+            'User-Agent': CHROME_UA,
+            'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          resolvedAddress: pinned.address,
+          resolvedFamily: pinned.family,
+          maxResponseBytes: MAX_RSS_RESPONSE_BYTES,
+        }, parsed.hostname === 'news.google.com' ? 20000 : 12000);
+
+        // 4) Follow a bounded number of redirects, re-validating the next hop
+        //    on the following loop iteration.
+        if (RSS_REDIRECT_STATUSES.has(response.status)) {
+          const location = response.headers.get('location');
+          if (!location) return rssProxyResponse('', response.status);
+          if (hop === MAX_RSS_REDIRECTS) {
+            return rssProxyJson({ error: 'Too many redirects' }, 502);
+          }
+          currentUrl = new URL(location, currentUrl).toString();
+          continue;
+        }
+
+        const rssBody = await response.text();
+        return rssProxyResponse(rssBody || '', response.status);
       }
-      const response = await fetchWithTimeout(feedUrl, {
-        headers: {
-          'User-Agent': CHROME_UA,
-          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        resolvedAddress: pinned.address,
-        resolvedFamily: pinned.family,
-      }, parsed.hostname === 'news.google.com' ? 20000 : 12000);
-      const rssBody = await response.text();
-      return rssProxyResponse(rssBody || '', response.status);
+      return rssProxyJson({ error: 'Too many redirects' }, 502);
     } catch (e) {
-      const isTimeout = e.name === 'AbortError' || e.message?.includes('timeout');
-      return rssProxyJson({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed', url: feedUrl }, isTimeout ? 504 : 502);
+      if (e && e.code === 'ERR_RESPONSE_TOO_LARGE') {
+        context.logger.warn('[local-api] rss-proxy response exceeded size cap');
+        return rssProxyJson({ error: 'Feed exceeds maximum allowed size' }, 502);
+      }
+      const isTimeout = e.name === 'AbortError'
+        || e.message?.includes('timeout')
+        || e.message?.includes('timed out');
+      return rssProxyJson({ error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed' }, isTimeout ? 504 : 502);
     }
   }
 
@@ -1871,6 +1994,13 @@ export const __testing__ = {
   canCompress,
   jsonForScript,
   isYahooFinanceHost,
+  // SIH26163 / F1 remediation seams — pure predicates for unit tests.
+  isRssDomainAllowed,
+  getRssAllowedDomains,
+  rssHostMatchForms,
+  DEFAULT_RSS_ALLOWED_DOMAINS,
+  MAX_RSS_RESPONSE_BYTES,
+  MAX_RSS_REDIRECTS,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },

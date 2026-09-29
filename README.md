@@ -1,3 +1,12 @@
+<!-- SIH26163 ASSESSMENT BANNER — added for the Smart India Hackathon 2026 authorized
+     security assessment. This does not modify the upstream project description below. -->
+> **🔒 SIH26163 authorized security assessment.** This fork carries a complete,
+> evidence-driven security assessment of the **self-hosted** deployment under
+> [`assessment/`](assessment/README.md) (primary finding **F1**, remediated and
+> re-tested). It is an authorized **local** assessment — no production systems or
+> user data are tested. Run `node assessment/run.mjs`, then open
+> `assessment/dashboard/index.html`. See [`SIH26163_SUBMISSION_NOTES.md`](SIH26163_SUBMISSION_NOTES.md).
+
 # World Monitor
 
 [简体中文](README.zh-CN.md) | [日本語](README.ja-JP.md) | [Русский](README.ru.md)

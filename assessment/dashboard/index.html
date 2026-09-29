@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIH26163 — World Monitor Security Assessment Console</title>
+<style>
+:root{
+  --bg:#0a0e1c;--panel:#121a30;--panel2:#0f1730;--ink:#e9edfb;--mut:#93a0c8;--line:#243156;
+  --acc:#5b8cff;--ok:#39d98a;--warn:#ffb020;--crit:#ff5470;--chip:#0f1830;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--acc)}
+code{background:var(--chip);padding:1px 6px;border-radius:5px;font-size:13px}
+.app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+nav{background:linear-gradient(180deg,#0d1428,#0a0e1c);border-right:1px solid var(--line);padding:18px 12px}
+.brand{font-weight:800;letter-spacing:.5px;font-size:15px;padding:6px 10px 14px}
+.brand small{display:block;color:var(--mut);font-weight:600;letter-spacing:2px;font-size:10px;margin-top:4px}
+nav button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--mut);
+  padding:10px 12px;border-radius:8px;cursor:pointer;font-size:14px;margin:2px 0}
+nav button:hover{background:#111b34;color:var(--ink)}
+nav button.active{background:#16224a;color:#fff;box-shadow:inset 2px 0 0 var(--acc)}
+main{padding:22px 26px 60px;max-width:1040px}
+header.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+h1{font-size:22px;margin:0}
+h2{font-size:18px;margin:26px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+h3{font-size:15px;margin:0 0 8px}
+.sub{color:var(--mut);margin:2px 0 0}
+.badge{display:inline-flex;align-items:center;gap:7px;background:#0c2a1c;border:1px solid #1f5c43;color:var(--ok);
+  padding:6px 12px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.3px}
+.badge .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.kpi b{display:block;font-size:26px;line-height:1.1}
+.kpi span{color:var(--mut);font-size:12px}
+.kpi.good b{color:var(--ok)}.kpi.warn b{color:var(--warn)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.tag{background:var(--chip);border:1px solid #2b3a63;color:var(--mut);border-radius:999px;padding:2px 10px;font-size:12px}
+.tag.ok{color:var(--ok);border-color:#1f5c43}.tag.sev{color:var(--warn);border-color:#5c4a1f}
+.tag.crit{color:var(--crit);border-color:#5c2333}
+table{width:100%;border-collapse:collapse;margin:10px 0;font-size:14px}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:#0f1830;color:var(--mut);font-weight:600}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+.pill{padding:2px 8px;border-radius:6px;font-size:12px;font-weight:700}
+.pill.before{background:#2a1420;color:#ff9db1;border:1px solid #5c2333}
+.pill.after{background:#0c2a1c;color:var(--ok);border:1px solid #1f5c43}
+.flow{display:grid;grid-template-columns:1fr 40px 1fr;gap:8px;align-items:stretch;margin:12px 0}
+.flow .col{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px}
+.flow .col h4{margin:0 0 10px;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--mut)}
+.flow .step{background:#0e1830;border:1px solid #2b3a63;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px}
+.flow .step.bad{border-color:#5c2333;color:#ffb3c1}
+.flow .step.good{border-color:#1f5c43;color:#b7f5d8}
+.flow .arrow{display:flex;align-items:center;justify-content:center;color:var(--mut);font-size:22px}
+.note{background:#0e182f;border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:8px;padding:10px 14px;color:var(--mut);margin:14px 0}
+.note.warn{border-left-color:var(--warn)}
+ul.tight{margin:6px 0;padding-left:18px}ul.tight li{margin:3px 0}
+.kbd{background:#0f1830;border:1px solid #2b3a63;border-bottom-width:2px;border-radius:6px;padding:1px 7px;font-size:12px}
+.hide{display:none}
+.metricbar{height:8px;background:#0f1830;border-radius:6px;overflow:hidden;margin-top:6px}
+.metricbar>i{display:block;height:100%;background:linear-gradient(90deg,var(--acc),var(--warn))}
+@media(max-width:760px){.app{grid-template-columns:1fr}nav{display:flex;flex-wrap:wrap;gap:4px}nav .brand{width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav>
+    <div class="brand">WORLD MONITOR<small>SECURITY ASSESSMENT · SIH26163</small></div>
+    <button data-view="overview" class="active">Executive Dashboard</button>
+    <button data-view="surface">Attack Surface</button>
+    <button data-view="findings">Findings</button>
+    <button data-view="f1">F1 Detail</button>
+    <button data-view="remediation">Remediation</button>
+    <button data-view="reports">Reports</button>
+    <button data-view="demo">Demo Script</button>
+  </nav>
+  <main id="main"><p class="sub">Loading assessment data…</p></main>
+</div>
+
+<script src="data.js" onerror="window.__DATA_ERR=1"></script>
+<script>
+const A = window.ASSESSMENT;
+const main = document.getElementById('main');
+const esc = (s)=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+function topbar(title, sub){
+  return `<header class="top"><div><h1>${esc(title)}</h1><p class="sub">${esc(sub||'')}</p></div>
+    <span class="badge"><span class="dot"></span>AUTHORIZED · LOCAL ENVIRONMENT</span></header>`;
+}
+function sevTag(f){
+  const c = f.cvss&&f.cvss.computed ? f.cvss.computed : null;
+  if(!c) return '<span class="tag">CVSS: —</span>';
+  const cls = c.severity==='Critical'?'crit':(c.severity==='High'||c.severity==='Medium'?'sev':'');
+  return `<span class="tag ${cls}">CVSS ${c.baseScore} ${c.severity}</span>`;
+}
+
+function evOf(id){ return (A.evidence||[]).filter(e=>e.findingId===id); }
+function f1(){ return A.findings.find(x=>x.id==='F1'); }
+
+const views = {
+  overview(){
+    const s=A.summary,m=A.meta;
+    return topbar('Executive Dashboard', `${m.organization} · Target: ${m.target}`)
+    + `<div class="note">${esc(m.environment)} &nbsp;·&nbsp; Baseline snapshot: <code>${esc(m.baselineRef)}</code> &nbsp;·&nbsp; Generated ${esc(A.generatedAt)}</div>
+    <div class="grid">
+      <div class="kpi good"><b>ASSESSED</b><span>Assessment status</span></div>
+      <div class="kpi"><b>${s.totalFindings}</b><span>Findings</span></div>
+      <div class="kpi"><b>${s.confirmed}</b><span>Confirmed</span></div>
+      <div class="kpi good"><b>${s.remediated}</b><span>Remediated</span></div>
+      <div class="kpi good"><b>${s.retested}</b><span>Re-tested · PASS</span></div>
+      <div class="kpi"><b>${s.domainsAssessed}</b><span>Security domains</span></div>
+      <div class="kpi warn"><b>${s.f1CvssPrimary}</b><span>F1 CVSS (${esc(s.f1CvssPrimarySeverity)})</span></div>
+      <div class="kpi"><b>${A.attackSurface.counts.apiRoutes}</b><span>API routes mapped</span></div>
+    </div>
+    <h2>Primary case study — F1</h2>
+    <div class="card"><h3>${esc(f1().title)}</h3>
+      <div class="tags"><span class="tag ok">${esc(f1().lifecycle)}</span><span class="tag">Confidence: ${esc(f1().confidence)}</span>${sevTag(f1())}<span class="tag">${esc(f1().domain)}</span></div>
+      <p>${esc(f1().description)}</p>
+      <div class="note warn"><b>Controlled local evidence.</b> BEFORE: non-allowlisted host fetched, ~64&nbsp;MB body returned, ~327&nbsp;MB process RSS growth. AFTER: request rejected with HTTP&nbsp;403 before any outbound connection; oversized body aborted at the 5&nbsp;MB cap. <b>Not a public production vulnerability.</b></div>
+    </div>
+    <h2>Domains assessed</h2>
+    <div class="card"><ul class="tight">${m.domainsAssessed.map(d=>`<li>${esc(d)}</li>`).join('')}</ul></div>`;
+  },
+
+  surface(){
+    const s=A.attackSurface;
+    return topbar('Attack Surface', 'Enumerated from the authorized repository — facts only')
+    + `<div class="grid">
+      <div class="kpi"><b>${s.counts.apiRoutes}</b><span>API routes</span></div>
+      <div class="kpi"><b>${s.counts.rpcRoutes}</b><span>RPC routes</span></div>
+      <div class="kpi"><b>${s.counts.restRoutes}</b><span>REST routes</span></div>
+      <div class="kpi"><b>${s.counts.dockerServices}</b><span>Docker services</span></div>
+      <div class="kpi"><b>${s.counts.configSurfaces}</b><span>Config surfaces</span></div>
+      <div class="kpi"><b>${s.counts.frontendEntries}</b><span>Frontend entries</span></div>
+    </div>
+    <h2>Docker services</h2><div class="card mono">${s.dockerServices.map(esc).join(' &nbsp;·&nbsp; ')}</div>
+    <h2>Configuration surfaces</h2><div class="card"><ul class="tight">${s.configSurfaces.map(c=>`<li class="mono">${esc(c)}</li>`).join('')}</ul></div>
+    <h2>Frontend entry points</h2><div class="card mono">${s.frontendEntries.map(esc).join(' &nbsp;·&nbsp; ')}</div>
+    <h2>Focus route (F1)</h2>
+    <div class="card"><p>${esc(s.focusRoute.note)}</p>
+      <table><tr><th>Route</th><td class="mono">${esc(s.focusRoute.route)}</td></tr>
+      <tr><th>Hosted implementation</th><td class="mono">${esc(s.focusRoute.hostedImpl)}</td></tr>
+      <tr><th>Self-hosted implementation</th><td class="mono">${esc(s.focusRoute.selfHostedImpl)}</td></tr></table></div>
+    <h2>Security-sensitive helpers reviewed</h2>
+    <div class="card"><ul class="tight">${s.securityHelpers.map(h=>`<li class="mono">${esc(h)}</li>`).join('')}</ul></div>`;
+  },
+
+  findings(){
+    return topbar('Findings', `${A.findings.length} findings · lifecycle-tracked`)
+    + A.findings.map(f=>`<div class="card">
+      <h3>${esc(f.id)} — ${esc(f.title)}</h3>
+      <div class="tags"><span class="tag ok">${esc(f.lifecycle)}</span><span class="tag">Confidence: ${esc(f.confidence)}</span>${sevTag(f)}<span class="tag">${esc(f.domain)}</span>${f.primary?'<span class="tag sev">PRIMARY</span>':''}</div>
+      <p>${esc(f.description)}</p>
+      <p class="sub mono">Affected: ${f.affectedComponents.map(esc).join(' · ')}</p>
+      <p class="sub">Evidence: ${evOf(f.id).length? evOf(f.id).map(e=>e.id).join(', ') : '—'} &nbsp;|&nbsp; Lifecycle: ${f.lifecycleHistory.join(' → ')}</p>
+    </div>`).join('');
+  },
+
+  f1(){
+    const f=f1(), ev=evOf('F1');
+    const e1=ev.find(e=>e.id==='E-F1-01'), e2=ev.find(e=>e.id==='E-F1-02');
+    const before=e1&&e1.result&&e1.result.before, after=e1&&e1.result&&e1.result.after;
+    const cv=A.cvss.f1;
+    return topbar('F1 — Self-hosted Docker RSS Proxy Security Control Gap', 'Primary case study')
+    + `<div class="card">
+      <div class="tags"><span class="tag ok">${esc(f.lifecycle)}</span><span class="tag">Confidence: ${esc(f.confidence)}</span>${sevTag(f)}<span class="tag">${(f.cwe||[]).map(esc).join(' · ')}</span></div>
+      <h3>Overview</h3><p>${esc(f.description)}</p>
+      <p><b>Root cause.</b> ${esc(f.rootCause)}</p>
+    </div>
+    <h2>Affected components</h2>
+    <div class="card"><ul class="tight">${f.affectedComponents.map(c=>`<li class="mono">${esc(c)}</li>`).join('')}</ul></div>
+    <h2>Hosted vs self-hosted comparison</h2>
+    <div class="card"><table>
+      <tr><th>Control</th><th>Hosted (api/rss-proxy.js)</th><th>Self-hosted BEFORE</th><th>Self-hosted AFTER</th></tr>
+      <tr><td>Domain allowlist</td><td>Yes (isAllowedDomain)</td><td><span class="pill before">Missing</span></td><td><span class="pill after">Enforced</span></td></tr>
+      <tr><td>Response-size cap</td><td>Yes (5&nbsp;MB)</td><td><span class="pill before">None</span></td><td><span class="pill after">5&nbsp;MB, stream-abort</span></td></tr>
+      <tr><td>Per-hop redirect re-check</td><td>Yes</td><td><span class="pill before">No follow / no re-check</span></td><td><span class="pill after">Re-validated each hop</span></td></tr>
+      <tr><td>SSRF IP guard</td><td>Yes</td><td><span class="pill after">Present</span></td><td><span class="pill after">Present</span></td></tr>
+    </table></div>
+    <h2>Before / After control flow</h2>
+    <div class="flow">
+      <div class="col"><h4>Before</h4>
+        <div class="step">Request <code>?url=</code></div>
+        <div class="step">SSRF IP check</div>
+        <div class="step bad">No domain allowlist</div>
+        <div class="step bad">No response-size cap</div>
+        <div class="step bad">Full body buffered → resource risk</div>
+      </div>
+      <div class="arrow">➜</div>
+      <div class="col"><h4>After</h4>
+        <div class="step">Request <code>?url=</code></div>
+        <div class="step good">URL + SSRF validation</div>
+        <div class="step good">Domain allowlist (default-deny)</div>
+        <div class="step good">Redirect re-validation (each hop)</div>
+        <div class="step good">5&nbsp;MB cap → safe stream-abort → RSS</div>
+      </div>
+    </div>
+    <h2>Controlled PoC — evidence</h2>
+    <div class="note warn"><b>Controlled Local Evidence.</b> Synthetic upstream, DNS + transport stubbed, no network egress. <b>Not a public production vulnerability.</b></div>
+    <div class="card"><table>
+      <tr><th>Metric</th><th>BEFORE (baseline)</th><th>AFTER (remediated)</th></tr>
+      <tr><td>Non-allowlisted host fetched</td><td>${before?esc(before.outboundToTarget):'—'}</td><td>${after?esc(after.outboundToTarget):'—'}</td></tr>
+      <tr><td>HTTP status</td><td><span class="pill before">${before?esc(before.status):'—'}</span></td><td><span class="pill after">${after?esc(after.status):'—'}</span></td></tr>
+      <tr><td>Bytes returned to caller</td><td>${before?esc(before.mib)+' MB':'—'}</td><td>${after?esc(after.mib)+' MB':'—'}</td></tr>
+      <tr><td>Process RSS growth</td><td>~${before?esc(before.rssGrowthMb):'—'} MB</td><td>~${after?esc(after.rssGrowthMb):'—'} MB</td></tr>
+    </table>
+    <p class="sub">Regression suite: <b>${e2?esc(e2.result.verdict):'—'}</b> (${e2?esc(e2.result.pass)+'/'+esc(e2.result.tests):'—'} cases). Evidence IDs: ${ev.map(e=>e.id).join(', ')}. Collected ${e1?esc(e1.timestamp):''}.</p></div>
+    <h2>Impact</h2>
+    <div class="card"><table>${Object.entries(f.impact).map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table></div>
+    <h2>Risk — CVSS v3.1</h2>
+    <div class="card">
+      <p><b>Primary:</b> <span class="mono">${esc(cv.primary.vector)}</span> = <b>${cv.primary.baseScore} (${esc(cv.primary.severity)})</b></p>
+      <div class="metricbar"><i style="width:${cv.primary.baseScore*10}%"></i></div>
+      <p class="sub">Conservative (availability treated as partial): <span class="mono">${esc(cv.conservative.vector)}</span> = ${cv.conservative.baseScore} (${esc(cv.conservative.severity)}).</p>
+      <table>${Object.entries(cv.primary.rationale).map(([k,v])=>`<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('')}</table>
+      <p class="sub">Severity is computed from the stated vector and is presented separately from finding confidence (${esc(f.confidence)}).</p>
+    </div>
+    <h2>Remediation & re-test</h2>
+    <div class="card"><p>${esc(f.remediation.summary)}</p><ul class="tight">${f.remediation.changes.map(c=>`<li>${esc(c)}</li>`).join('')}</ul>
+      <p><b>Files changed:</b> ${f.remediation.filesChanged.map(c=>`<code>${esc(c)}</code>`).join(', ')}</p>
+      <p><b>Re-test:</b> ${esc(f.retest.result)}</p></div>`;
+  },
+
+  remediation(){
+    const f=f1();
+    return topbar('Remediation', 'F1 root-cause fix')
+    + `<div class="card">
+      <table>
+        <tr><th>Vulnerability</th><td>${esc(f.title)}</td></tr>
+        <tr><th>Root cause</th><td>${esc(f.rootCause)}</td></tr>
+        <tr><th>Proposed & applied fix</th><td><ul class="tight">${f.remediation.changes.map(c=>`<li>${esc(c)}</li>`).join('')}</ul></td></tr>
+        <tr><th>Files changed</th><td class="mono">${f.remediation.filesChanged.join('<br>')}</td></tr>
+        <tr><th>Tests added</th><td class="mono">assessment/tests/f1-rss-proxy.security.test.mjs (9 cases)</td></tr>
+        <tr><th>Re-test result</th><td><span class="pill after">${esc(f.retest.result)}</span></td></tr>
+      </table>
+    </div>
+    <h2>Other findings (documented recommendations)</h2>
+    ${A.findings.filter(x=>x.id!=='F1').map(x=>`<div class="card"><h3>${esc(x.id)} — ${esc(x.title)}</h3>
+      <div class="tags"><span class="tag">${esc(x.lifecycle)}</span>${sevTag(x)}</div>
+      <p>${esc(x.description)}</p><p class="sub">${esc(x.remediation.summary)}</p></div>`).join('')}`;
+  },
+
+  reports(){
+    const s=A.summary;
+    return topbar('Reports', 'Generated from stored findings + evidence')
+    + `<div class="card">
+      <p>The report is generated by <code>assessment/engine/report.mjs</code> from the canonical findings and the collected evidence — not duplicated prose.</p>
+      <ul class="tight">
+        <li><a href="../reports/report.html">report.html</a> — formatted HTML report</li>
+        <li><a href="../reports/report.md">report.md</a> — Markdown report</li>
+        <li><a href="../data/assessment.json">assessment.json</a> — machine-readable (JSON)</li>
+        <li><a href="../data/evidence.json">evidence.json</a> — raw collected evidence</li>
+      </ul>
+    </div>
+    <div class="grid">
+      <div class="kpi"><b>${s.totalFindings}</b><span>Findings</span></div>
+      <div class="kpi good"><b>${s.retested}</b><span>Re-tested PASS</span></div>
+      <div class="kpi warn"><b>${s.f1CvssPrimary}</b><span>F1 CVSS</span></div>
+      <div class="kpi"><b>${s.domainsAssessed}</b><span>Domains</span></div>
+    </div>
+    <div class="note">Regenerate anytime: <span class="kbd">node assessment/run.mjs</span></div>`;
+  },
+
+  demo(){
+    const seq=['Open this Security Console (Executive Dashboard).','Point out the AUTHORIZED · LOCAL ENVIRONMENT badge and target = self-hosted World Monitor.','Open Attack Surface — 166 routes, Docker services, config surfaces enumerated from source.','Open F1 Detail — the primary case study.','Show the Hosted vs Self-hosted comparison table.','Show Controlled PoC evidence: BEFORE 200 / ~64 MB / ~327 MB RSS vs AFTER 403 / aborted.','Walk the Before → After control-flow diagram (10-second read).','Open Remediation — files changed + tests added.','Run the retest live: node --test assessment/tests/f1-rss-proxy.security.test.mjs → 9/9 PASS.','Show Reports — open report.html generated from stored evidence.','State clearly: authorized local assessment; not a production vulnerability.'];
+    return topbar('Demo Script', 'Understandable without reading source code')
+    + `<div class="card"><ol>${seq.map(x=>`<li style="margin:7px 0">${esc(x)}</li>`).join('')}</ol></div>
+    <div class="note warn">Claims we must NOT make: "worldmonitor.app is an open proxy" · "we hacked production" · "we accessed production data". Correct framing: "During authorized local assessment of the self-hosted Docker deployment, we identified, reproduced, remediated, and re-tested a security/resource-control weakness."</div>`;
+  }
+};
+
+function render(view){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+  main.innerHTML = views[view] ? views[view]() : views.overview();
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>render(b.dataset.view)));
+
+if(!A){
+  main.innerHTML = `<header class="top"><h1>Assessment data not loaded</h1></header>
+    <div class="note warn">Run <span class="kbd">node assessment/run.mjs</span> first to generate <code>assessment/dashboard/data.js</code>, then reload this page.</div>`;
+} else {
+  render('overview');
+}
+</script>
+</body>
+</html>

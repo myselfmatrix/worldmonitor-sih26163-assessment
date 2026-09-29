@@ -1,0 +1,63 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SIH26163 Security Assessment Report</title>
+<style>
+:root{--bg:#0b1020;--panel:#141b33;--ink:#e8ecf8;--mut:#93a0c8;--acc:#5b8cff;--ok:#39d98a;--warn:#ffb020;--crit:#ff5470;}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,Segoe UI,sans-serif;padding:0 16px}
+.wrap{max-width:960px;margin:0 auto;padding:32px 0 64px}
+h1{font-size:26px;margin:0 0 4px}h3{margin:0 0 8px;font-size:17px}
+.sub{color:var(--mut);margin:0 0 20px}
+.note{background:#10192f;border:1px solid #24304f;border-left:3px solid var(--acc);border-radius:8px;padding:10px 14px;color:var(--mut);margin:16px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:20px 0}
+.kpi{background:var(--panel);border:1px solid #24304f;border-radius:10px;padding:14px}
+.kpi b{display:block;font-size:24px}.kpi span{color:var(--mut);font-size:12px}
+.card{background:var(--panel);border:1px solid #24304f;border-radius:10px;padding:16px;margin:14px 0}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.tag{background:#0f1830;border:1px solid #2b3a63;color:var(--mut);border-radius:999px;padding:2px 10px;font-size:12px}
+.tag.life{color:var(--ok);border-color:#1f5c43}.tag.sev{color:var(--warn);border-color:#5c4a1f}
+code{background:#0f1830;padding:1px 5px;border-radius:5px}
+</style></head><body><div class="wrap">
+<h1>SIH26163 — Security Assessment of the World Monitor application</h1>
+<p class="sub">NTRO · Target: World Monitor (self-hosted / local Docker deployment) · Baseline <code>BASELINE-SIH26163</code> · Generated 2026-09-29T18:37:15.025Z</p>
+<div class="note">Authorized local / self-hosted assessment only. No production systems or user data are tested.</div>
+<div class="grid">
+  <div class="kpi"><b>3</b><span>Findings</span></div>
+  <div class="kpi"><b>1</b><span>Confirmed</span></div>
+  <div class="kpi"><b>1</b><span>Remediated</span></div>
+  <div class="kpi"><b>1</b><span>Re-tested PASS</span></div>
+  <div class="kpi"><b>7.5</b><span>F1 CVSS (High)</span></div>
+  <div class="kpi"><b>166</b><span>API routes</span></div>
+</div>
+<h2>Findings</h2>
+<section class="card"><h3>F1 — Self-hosted Docker RSS proxy egress-control gap (missing domain allowlist and response-size cap)</h3>
+      <p class="tags"><span class="tag life">RETESTED</span>
+        <span class="tag">Confidence: High</span>
+        <span class="tag sev">CVSS: 7.5 High</span>
+        <span class="tag">API security / Deployment configuration</span></p>
+      <p>During authorized local assessment of the self-hosted Docker deployment, the RSS proxy route in the Node sidecar was found to fetch any caller-named public URL and to buffer the entire upstream body without a size cap. The hosted Vercel implementation (api/rss-proxy.js) enforces a destination-domain allowlist and a 5 MB response cap; the self-hosted sidecar path lacked both. Because docker/nginx.conf injects the sidecar transport token on every public /api/ request, the route is reachable without caller credentials on a self-hosted instance.</p>
+      <p><strong>Root cause.</strong> The two RSS proxy implementations diverged: the egress-policy controls (allowlist + size cap + per-hop redirect re-validation) present in the hosted edge function were never mirrored in the self-hosted Node sidecar route, which relied on the SSRF IP guard alone.</p>
+      <p><strong>Remediation.</strong> Bring the sidecar RSS route to parity with the hosted egress policy.</p>
+      <p><strong>Re-test.</strong> PASS — non-allowlisted host rejected with 403 before any outbound request; oversized body aborted at the 5 MB cap; legitimate allowlisted feeds and redirects still work.</p>
+    </section>
+<section class="card"><h3>F2 — No rate limiting on the self-hosted Docker /api/ ingress</h3>
+      <p class="tags"><span class="tag life">VALIDATED</span>
+        <span class="tag">Confidence: High</span>
+        <span class="tag sev">CVSS: —</span>
+        <span class="tag">API security / Deployment configuration</span></p>
+      <p>The self-hosted nginx ingress proxies /api/ to the sidecar without limit_req/limit_conn. This amplifies F1 (an oversized fetch can be repeated cheaply) and permits unthrottled abuse of proxied routes on self-hosted instances.</p>
+      <p><strong>Root cause.</strong> The hosted deployment relies on an Upstash-backed limiter that self-hosted ingress does not reproduce at the edge.</p>
+      <p><strong>Remediation.</strong> Add an nginx limit_req_zone + per-location limit_req (documented recommendation; not applied in this assessment branch to avoid changing operator-tunable capacity policy).</p>
+      <p><strong>Re-test.</strong> N/A — documented hardening recommendation.</p>
+    </section>
+<section class="card"><h3>F4 — Static, constant CSP nonce ('nonce-wm-static-bootstrap')</h3>
+      <p class="tags"><span class="tag life">VALIDATED</span>
+        <span class="tag">Confidence: High</span>
+        <span class="tag sev">CVSS: —</span>
+        <span class="tag">Client-side security controls</span></p>
+      <p>The CSP script nonce is a hardcoded literal shipped in static HTML rather than a per-response value. It does not grant injection by itself (no HTML-injection sink was found, and script-src also uses 'strict-dynamic' + hashes), so practical risk is low, but the nonce provides no defense value against a future injection sink.</p>
+      <p><strong>Root cause.</strong> A build-time constant is used where a per-response random nonce is intended.</p>
+      <p><strong>Remediation.</strong> Generate a per-response nonce at the edge/nginx layer, or rely solely on hashes + 'strict-dynamic' (documented recommendation).</p>
+      <p><strong>Re-test.</strong> N/A — documented hardening recommendation.</p>
+    </section>
+<div class="note">CVSS computed from stated vectors by assessment/engine/cvss.mjs. Severity is separate from confidence. Authorized local assessment only — no production systems or user data tested.</div>
+</div></body></html>

@@ -1,0 +1,433 @@
+{
+  "generatedAt": "2026-09-29T18:37:15.025Z",
+  "meta": {
+    "id": "SIH26163",
+    "title": "Security Assessment of the World Monitor application",
+    "organization": "NTRO",
+    "target": "World Monitor (self-hosted / local Docker deployment)",
+    "targetRepo": "https://github.com/koala73/worldmonitor",
+    "baselineRef": "BASELINE-SIH26163",
+    "environment": "Authorized local / self-hosted assessment only. No production systems or user data are tested.",
+    "domainsAssessed": [
+      "Authentication & session management",
+      "Authorization / access control",
+      "Input validation & data handling",
+      "API security",
+      "Client-side security controls",
+      "Secure communication",
+      "Data storage & privacy",
+      "Secrets / configuration",
+      "SSRF / injection / IDOR / misconfiguration",
+      "Deployment / Docker / nginx configuration"
+    ]
+  },
+  "summary": {
+    "totalFindings": 3,
+    "confirmed": 1,
+    "remediated": 1,
+    "retested": 1,
+    "domainsAssessed": 10,
+    "f1CvssPrimary": 7.5,
+    "f1CvssPrimarySeverity": "High",
+    "f1CvssConservative": 5.3
+  },
+  "cvss": {
+    "f1": {
+      "primary": {
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        "rationale": {
+          "AV": "Network — the route is reachable over the container HTTP ingress.",
+          "AC": "Low — a single crafted URL parameter; no special conditions.",
+          "PR": "None — the Docker ingress injects the transport token for every caller.",
+          "UI": "None — no victim interaction required.",
+          "S": "Unchanged (conservative) — impact scored within the app container. S:C is arguable because co-located supervisord services share the host memory; that would raise the score.",
+          "C": "None — private/reserved IPs remain SSRF-blocked, so app secrets/metadata are not reachable via this gap.",
+          "I": "None — the app data store is not modified; the misuse is egress/proxying, captured qualitatively.",
+          "A": "High — unbounded response buffering (measured ~327 MB RSS for one 64 MB body) with no container memory limit and no route rate limit enables memory exhaustion."
+        },
+        "baseScore": 7.5,
+        "severity": "High",
+        "subScores": {
+          "impact": 3.6,
+          "exploitability": 3.89,
+          "iss": 0.56
+        }
+      },
+      "conservative": {
+        "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+        "note": "Use when the amplification is judged to degrade rather than deny service (e.g. a container mem_limit is set).",
+        "baseScore": 5.3,
+        "severity": "Medium",
+        "subScores": {
+          "impact": 1.41,
+          "exploitability": 3.89,
+          "iss": 0.22
+        }
+      }
+    }
+  },
+  "attackSurface": {
+    "generatedAt": "2026-09-29T18:37:15.023Z",
+    "counts": {
+      "apiRoutes": 166,
+      "rpcRoutes": 37,
+      "restRoutes": 129,
+      "dockerServices": 4,
+      "configSurfaces": 8,
+      "frontendEntries": 5
+    },
+    "dockerServices": [
+      "worldmonitor",
+      "ais-relay",
+      "redis",
+      "redis-rest"
+    ],
+    "configSurfaces": [
+      "vercel.json",
+      "middleware.ts",
+      "docker/nginx.conf",
+      "docker/nginx.conf.template",
+      "docker-compose.yml",
+      "docker/entrypoint.sh",
+      ".env.example",
+      "src-tauri/tauri.conf.json"
+    ],
+    "frontendEntries": [
+      "embed.html",
+      "index.html",
+      "live-channels.html",
+      "mcp-grant.html",
+      "settings.html"
+    ],
+    "securityHelpers": [
+      "api/_api-key.js",
+      "api/_cors.js",
+      "api/_rate-limit.js",
+      "api/_client-ip.js",
+      "api/_session.js",
+      "api/rss-proxy.js",
+      "api/_rss-allowed-domain-match.js",
+      "src-tauri/sidecar/local-api-server.mjs"
+    ],
+    "focusRoute": {
+      "route": "/api/rss-proxy",
+      "hostedImpl": "api/rss-proxy.js",
+      "selfHostedImpl": "src-tauri/sidecar/local-api-server.mjs",
+      "note": "Primary case study (F1): hosted vs self-hosted egress-control divergence."
+    },
+    "sampleRestRoutes": [
+      "/api/[...notfound]",
+      "/api/a2a",
+      "/api/agent-auth",
+      "/api/analytics-health",
+      "/api/ask",
+      "/api/bootstrap",
+      "/api/brief/[userId]/[issueDate]",
+      "/api/brief/carousel/[userId]/[issueDate]/[page]",
+      "/api/brief/public/[hash]",
+      "/api/brief/share-url",
+      "/api/cache-purge",
+      "/api/chat-analyst",
+      "/api/correlation-runtime-mode",
+      "/api/create-checkout",
+      "/api/customer-portal",
+      "/api/discord/oauth/callback",
+      "/api/discord/oauth/start",
+      "/api/docs-mcp",
+      "/api/download",
+      "/api/embed/entitlement",
+      "/api/embed/map-frame",
+      "/api/embed/session",
+      "/api/fwdstart",
+      "/api/geo"
+    ]
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "title": "Self-hosted Docker RSS proxy egress-control gap (missing domain allowlist and response-size cap)",
+      "primary": true,
+      "confidence": "High",
+      "domain": "API security / Deployment configuration",
+      "cwe": [
+        "CWE-918 (SSRF-adjacent open proxy)",
+        "CWE-400 (Uncontrolled Resource Consumption)",
+        "CWE-770 (Allocation without Limits)"
+      ],
+      "lifecycle": "RETESTED",
+      "lifecycleHistory": [
+        "DISCOVERED",
+        "CANDIDATE",
+        "VALIDATED",
+        "CONFIRMED",
+        "REMEDIATED",
+        "RETESTED"
+      ],
+      "affectedComponents": [
+        "src-tauri/sidecar/local-api-server.mjs (route: /api/rss-proxy)",
+        "docker/nginx.conf (public /api/ ingress + token injection)",
+        "docker/entrypoint.sh (LOCAL_API_TOKEN provisioning)",
+        "docker-compose.yml (app container has no mem_limit)"
+      ],
+      "hostedControlReference": "api/rss-proxy.js (isAllowedDomain + MAX_FEED_BYTES=5MB + per-redirect re-check)",
+      "description": "During authorized local assessment of the self-hosted Docker deployment, the RSS proxy route in the Node sidecar was found to fetch any caller-named public URL and to buffer the entire upstream body without a size cap. The hosted Vercel implementation (api/rss-proxy.js) enforces a destination-domain allowlist and a 5 MB response cap; the self-hosted sidecar path lacked both. Because docker/nginx.conf injects the sidecar transport token on every public /api/ request, the route is reachable without caller credentials on a self-hosted instance.",
+      "rootCause": "The two RSS proxy implementations diverged: the egress-policy controls (allowlist + size cap + per-hop redirect re-validation) present in the hosted edge function were never mirrored in the self-hosted Node sidecar route, which relied on the SSRF IP guard alone.",
+      "impact": {
+        "confidentiality": "Low — SSRF IP guard still blocks private/reserved ranges, so internal metadata/services are not reachable; the app is usable as a public-web egress relay.",
+        "integrity": "Low — outbound requests carry the server's egress identity (proxy misuse), app data is not modified.",
+        "availability": "High — unbounded buffering (measured ~327 MB process RSS for one 64 MB response) with no container memory limit and no route rate limit enables memory exhaustion."
+      },
+      "cvss": {
+        "primaryVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        "conservativeVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+        "note": "Scores are computed by assessment/engine/cvss.mjs from these vectors, not hardcoded. Severity is separate from confidence.",
+        "computed": {
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "baseScore": 7.5,
+          "severity": "High",
+          "subScores": {
+            "impact": 3.6,
+            "exploitability": 3.89,
+            "iss": 0.56
+          }
+        },
+        "computedConservative": {
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+          "baseScore": 5.3,
+          "severity": "Medium",
+          "subScores": {
+            "impact": 1.41,
+            "exploitability": 3.89,
+            "iss": 0.22
+          }
+        }
+      },
+      "remediation": {
+        "summary": "Bring the sidecar RSS route to parity with the hosted egress policy.",
+        "changes": [
+          "Destination-domain allowlist (WM_RSS_ALLOWED_DOMAINS, www-tolerant, default-deny) enforced before any outbound request.",
+          "Per-hop redirect re-validation so a redirect cannot escape the allowlist or SSRF policy.",
+          "Hard 5 MB response-size cap (MAX_RSS_RESPONSE_BYTES) that aborts the stream mid-flight instead of buffering unbounded.",
+          "Preserved SSRF IP guard and address pinning; preserved legitimate feed functionality."
+        ],
+        "filesChanged": [
+          "src-tauri/sidecar/local-api-server.mjs"
+        ]
+      },
+      "retest": {
+        "method": "assessment/tests/f1-rss-proxy.security.test.mjs (9 cases) + assessment/poc/f1-rss-proxy-poc.mjs (BEFORE/AFTER).",
+        "result": "PASS — non-allowlisted host rejected with 403 before any outbound request; oversized body aborted at the 5 MB cap; legitimate allowlisted feeds and redirects still work."
+      },
+      "evidence": [
+        {
+          "id": "E-F1-01",
+          "findingId": "F1",
+          "timestamp": "2026-09-29T18:37:14.285Z",
+          "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+          "description": "Controlled BEFORE/AFTER PoC: same request issued to the baseline sidecar module (git tag BASELINE-SIH26163) and the remediated working-tree module, with DNS and the HTTPS transport stubbed (no packet leaves the host).",
+          "affectedComponent": "src-tauri/sidecar/local-api-server.mjs (/api/rss-proxy)",
+          "relevantFiles": [
+            "assessment/poc/f1-rss-proxy-poc.mjs"
+          ],
+          "result": {
+            "target": "attacker-chosen.example",
+            "requestedBodyMb": 64,
+            "hostedCapBytes": 5242880,
+            "before": {
+              "label": "BEFORE (BASELINE-SIH26163)",
+              "status": 200,
+              "bytes": 67108864,
+              "mib": 64,
+              "rssGrowthMb": 327,
+              "outboundToTarget": true
+            },
+            "after": {
+              "label": "AFTER (working tree)",
+              "status": 403,
+              "bytes": 39,
+              "mib": 0,
+              "rssGrowthMb": 0,
+              "outboundToTarget": false
+            }
+          }
+        },
+        {
+          "id": "E-F1-02",
+          "findingId": "F1",
+          "timestamp": "2026-09-29T18:37:14.805Z",
+          "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+          "description": "F1 remediation regression suite (allowlist, redirect re-validation, SSRF, response-size cap, legitimate-feed positive cases).",
+          "affectedComponent": "src-tauri/sidecar/local-api-server.mjs (/api/rss-proxy)",
+          "relevantFiles": [
+            "assessment/tests/f1-rss-proxy.security.test.mjs"
+          ],
+          "result": {
+            "tests": 9,
+            "pass": 9,
+            "fail": 0,
+            "verdict": "PASS"
+          }
+        },
+        {
+          "id": "E-F1-03",
+          "findingId": "F1",
+          "timestamp": "2026-09-29T18:37:14.805Z",
+          "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+          "description": "SHA-256 digests of the remediated self-hosted route and the hosted reference implementation whose controls it now mirrors.",
+          "result": {
+            "remediatedSidecar": {
+              "file": "src-tauri/sidecar/local-api-server.mjs",
+              "digest": "sha256:6b4dd772229bbeed4e125fc543766957f9255350c81308ef7db5a093c0e68545"
+            },
+            "hostedReference": {
+              "file": "api/rss-proxy.js",
+              "digest": "sha256:2c8289d295a672dd56f59f682178eb1a3cf2f495973b8252b420fc3cab7c49ca"
+            },
+            "hostedAllowlist": {
+              "file": "api/_rss-allowed-domain-match.js",
+              "digest": "sha256:bb827393d0a4591a8669f5b5fa9e5e751e151fb8c27d747b0a514c88cb8375b2"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "F2",
+      "title": "No rate limiting on the self-hosted Docker /api/ ingress",
+      "primary": false,
+      "confidence": "High",
+      "domain": "API security / Deployment configuration",
+      "cwe": [
+        "CWE-770 (Allocation of Resources Without Limits or Throttling)"
+      ],
+      "lifecycle": "VALIDATED",
+      "lifecycleHistory": [
+        "DISCOVERED",
+        "CANDIDATE",
+        "VALIDATED"
+      ],
+      "affectedComponents": [
+        "docker/nginx.conf (location /api/ has no limit_req/limit_conn)"
+      ],
+      "description": "The self-hosted nginx ingress proxies /api/ to the sidecar without limit_req/limit_conn. This amplifies F1 (an oversized fetch can be repeated cheaply) and permits unthrottled abuse of proxied routes on self-hosted instances.",
+      "rootCause": "The hosted deployment relies on an Upstash-backed limiter that self-hosted ingress does not reproduce at the edge.",
+      "impact": {
+        "availability": "Medium — enables repeated resource-amplification requests."
+      },
+      "remediation": {
+        "summary": "Add an nginx limit_req_zone + per-location limit_req (documented recommendation; not applied in this assessment branch to avoid changing operator-tunable capacity policy).",
+        "filesChanged": []
+      },
+      "retest": {
+        "result": "N/A — documented hardening recommendation."
+      },
+      "evidence": []
+    },
+    {
+      "id": "F4",
+      "title": "Static, constant CSP nonce ('nonce-wm-static-bootstrap')",
+      "primary": false,
+      "confidence": "High",
+      "domain": "Client-side security controls",
+      "cwe": [
+        "CWE-693 (Protection Mechanism Failure)"
+      ],
+      "lifecycle": "VALIDATED",
+      "lifecycleHistory": [
+        "DISCOVERED",
+        "CANDIDATE",
+        "VALIDATED"
+      ],
+      "affectedComponents": [
+        "vercel.json (CSP header)",
+        "index.html and ~15 templates using nonce=\"wm-static-bootstrap\""
+      ],
+      "description": "The CSP script nonce is a hardcoded literal shipped in static HTML rather than a per-response value. It does not grant injection by itself (no HTML-injection sink was found, and script-src also uses 'strict-dynamic' + hashes), so practical risk is low, but the nonce provides no defense value against a future injection sink.",
+      "rootCause": "A build-time constant is used where a per-response random nonce is intended.",
+      "impact": {
+        "confidentiality": "Low",
+        "integrity": "Low"
+      },
+      "remediation": {
+        "summary": "Generate a per-response nonce at the edge/nginx layer, or rely solely on hashes + 'strict-dynamic' (documented recommendation).",
+        "filesChanged": []
+      },
+      "retest": {
+        "result": "N/A — documented hardening recommendation."
+      },
+      "evidence": []
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E-F1-01",
+      "findingId": "F1",
+      "timestamp": "2026-09-29T18:37:14.285Z",
+      "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+      "description": "Controlled BEFORE/AFTER PoC: same request issued to the baseline sidecar module (git tag BASELINE-SIH26163) and the remediated working-tree module, with DNS and the HTTPS transport stubbed (no packet leaves the host).",
+      "affectedComponent": "src-tauri/sidecar/local-api-server.mjs (/api/rss-proxy)",
+      "relevantFiles": [
+        "assessment/poc/f1-rss-proxy-poc.mjs"
+      ],
+      "result": {
+        "target": "attacker-chosen.example",
+        "requestedBodyMb": 64,
+        "hostedCapBytes": 5242880,
+        "before": {
+          "label": "BEFORE (BASELINE-SIH26163)",
+          "status": 200,
+          "bytes": 67108864,
+          "mib": 64,
+          "rssGrowthMb": 327,
+          "outboundToTarget": true
+        },
+        "after": {
+          "label": "AFTER (working tree)",
+          "status": 403,
+          "bytes": 39,
+          "mib": 0,
+          "rssGrowthMb": 0,
+          "outboundToTarget": false
+        }
+      }
+    },
+    {
+      "id": "E-F1-02",
+      "findingId": "F1",
+      "timestamp": "2026-09-29T18:37:14.805Z",
+      "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+      "description": "F1 remediation regression suite (allowlist, redirect re-validation, SSRF, response-size cap, legitimate-feed positive cases).",
+      "affectedComponent": "src-tauri/sidecar/local-api-server.mjs (/api/rss-proxy)",
+      "relevantFiles": [
+        "assessment/tests/f1-rss-proxy.security.test.mjs"
+      ],
+      "result": {
+        "tests": 9,
+        "pass": 9,
+        "fail": 0,
+        "verdict": "PASS"
+      }
+    },
+    {
+      "id": "E-F1-03",
+      "findingId": "F1",
+      "timestamp": "2026-09-29T18:37:14.805Z",
+      "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+      "description": "SHA-256 digests of the remediated self-hosted route and the hosted reference implementation whose controls it now mirrors.",
+      "result": {
+        "remediatedSidecar": {
+          "file": "src-tauri/sidecar/local-api-server.mjs",
+          "digest": "sha256:6b4dd772229bbeed4e125fc543766957f9255350c81308ef7db5a093c0e68545"
+        },
+        "hostedReference": {
+          "file": "api/rss-proxy.js",
+          "digest": "sha256:2c8289d295a672dd56f59f682178eb1a3cf2f495973b8252b420fc3cab7c49ca"
+        },
+        "hostedAllowlist": {
+          "file": "api/_rss-allowed-domain-match.js",
+          "digest": "sha256:bb827393d0a4591a8669f5b5fa9e5e751e151fb8c27d747b0a514c88cb8375b2"
+        }
+      }
+    }
+  ]
+}

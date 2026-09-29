@@ -1,0 +1,76 @@
+{
+  "generatedAt": "2026-09-29T18:37:14.853Z",
+  "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+  "evidence": [
+    {
+      "id": "E-F1-01",
+      "findingId": "F1",
+      "timestamp": "2026-09-29T18:37:14.285Z",
+      "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+      "description": "Controlled BEFORE/AFTER PoC: same request issued to the baseline sidecar module (git tag BASELINE-SIH26163) and the remediated working-tree module, with DNS and the HTTPS transport stubbed (no packet leaves the host).",
+      "affectedComponent": "src-tauri/sidecar/local-api-server.mjs (/api/rss-proxy)",
+      "relevantFiles": [
+        "assessment/poc/f1-rss-proxy-poc.mjs"
+      ],
+      "result": {
+        "target": "attacker-chosen.example",
+        "requestedBodyMb": 64,
+        "hostedCapBytes": 5242880,
+        "before": {
+          "label": "BEFORE (BASELINE-SIH26163)",
+          "status": 200,
+          "bytes": 67108864,
+          "mib": 64,
+          "rssGrowthMb": 327,
+          "outboundToTarget": true
+        },
+        "after": {
+          "label": "AFTER (working tree)",
+          "status": 403,
+          "bytes": 39,
+          "mib": 0,
+          "rssGrowthMb": 0,
+          "outboundToTarget": false
+        }
+      }
+    },
+    {
+      "id": "E-F1-02",
+      "findingId": "F1",
+      "timestamp": "2026-09-29T18:37:14.805Z",
+      "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+      "description": "F1 remediation regression suite (allowlist, redirect re-validation, SSRF, response-size cap, legitimate-feed positive cases).",
+      "affectedComponent": "src-tauri/sidecar/local-api-server.mjs (/api/rss-proxy)",
+      "relevantFiles": [
+        "assessment/tests/f1-rss-proxy.security.test.mjs"
+      ],
+      "result": {
+        "tests": 9,
+        "pass": 9,
+        "fail": 0,
+        "verdict": "PASS"
+      }
+    },
+    {
+      "id": "E-F1-03",
+      "findingId": "F1",
+      "timestamp": "2026-09-29T18:37:14.805Z",
+      "environment": "node v26.2.0 on win32/x64 — authorized local assessment (no network egress)",
+      "description": "SHA-256 digests of the remediated self-hosted route and the hosted reference implementation whose controls it now mirrors.",
+      "result": {
+        "remediatedSidecar": {
+          "file": "src-tauri/sidecar/local-api-server.mjs",
+          "digest": "sha256:6b4dd772229bbeed4e125fc543766957f9255350c81308ef7db5a093c0e68545"
+        },
+        "hostedReference": {
+          "file": "api/rss-proxy.js",
+          "digest": "sha256:2c8289d295a672dd56f59f682178eb1a3cf2f495973b8252b420fc3cab7c49ca"
+        },
+        "hostedAllowlist": {
+          "file": "api/_rss-allowed-domain-match.js",
+          "digest": "sha256:bb827393d0a4591a8669f5b5fa9e5e751e151fb8c27d747b0a514c88cb8375b2"
+        }
+      }
+    }
+  ]
+}
